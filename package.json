@@ -1,0 +1,16 @@
+{
+	"name" : "simple-web-server-examples",
+	"preferGlobal" : false,
+	"version" : "0.0.1",
+	"author" : "Ryan Navaroli <ryan.navaroli@gmail.com>",
+	"description" : "Simple web server examples for quick development and beginners.",
+	"main" : "./index.js",
+	"dependencies" : {
+		"connect" : "*",
+		"express" : "*"
+	},
+	"license" : "MIT",
+	"engines" : {
+		"node" : ">=0.10"
+	}
+}
