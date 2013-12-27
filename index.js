@@ -1,21 +1,27 @@
-var http 	= require('http');
-var https	= require('https');
-var fs		= require('fs');
-var util	= require('util');
-var os		= require("os");
+/*
+	simple-web-server-examples
 
+	Example: `node index.js --http`
+	Anything in between node and the file to run.
+*/
 
-var port		= 8000;
+var fs = require('fs');
+var url = require('url');
+var path = require('path');
+var http = require('http');
+var https = require('https');
+var express = require('express');
+var connect = require('connect');
 
-// node --arg script.js
-// anything in between node and the file to run
+var PORT = 8000;
+var FILEDIR = "/_FILESERVEDIR";
 
 start();
 
 function start() {
-	if (!process.argv.length) {
+	if (process.argv.length < 3) {
 		console.log("No Arguments passed. Starting basic http");
-		console.log("For more options node thisFile.js --help");
+		console.log("For more options node index.js --help");
 		console.log("");
 		httpBasic();	
 		return;
@@ -23,42 +29,43 @@ function start() {
 
 	process.argv.every(function(arg, i) {
 		arg = arg.replace(/--/, "");
+
 		switch (arg) {
-			case "certs":
-				certs();
-				break;
 			case "http":
 				httpBasic();
-				console.log("Server running at http://127.0.0.1:"+port+"/");
 				break;
 			case "https":
-				certs();
 				httpsBasic();
-				console.log("Server running at https://127.0.0.1:"+port+"/");
 				break;
-			case "https2tls":
-				certs();
-				https2tls();
-				console.log("Server running at https://127.0.0.1:"+port+"/");
-				break;
-			case "httpExpress":
-				httpExpress();
-				console.log("Server running at http://127.0.0.1:"+port+"/");
+			case "httpsExpress":
+				httpsExpress();
+				console.log("Server running at http://127.0.0.1:"+PORT+"/");
 				break;
 			case "httpConnect":
 				httpConnect();
-				console.log("Server running at http://127.0.0.1:"+port+"/");
+				console.log("Server running at http://127.0.0.1:"+PORT+"/");
 				break;
 			case "httpsConnect":
-				certs();
 				httpsConnect();
-				console.log("Server running at https://127.0.0.1:"+port+"/");
+				console.log("Server running at https://127.0.0.1:"+PORT+"/");
+				break;
+			case "certs":
+				certs();
 				break;
 			case "help":
+				console.log("");
 				console.log("Pass an option to start a different type of basic server");
-				console.log("E.G. node thisFile.js --httpConnect");
-				["http", "https", "httpExpress", "httpConnect", "httpsConnect"].forEach(function(cmd, i) {
-					console.log("Option " + i + " : " + cmd );
+				console.log("E.G. node index.js --httpConnect");
+				console.log("");
+				[
+					"http (default)",
+					"https",
+					"httpsExpress",
+					"httpConnect",
+					"httpsConnect",
+					"certs (generate https certificates)"
+				].forEach(function(cmd, i) {
+					console.log("  Option " + i + " : " + cmd );
 				});
 				break;
 			default:
@@ -130,87 +137,136 @@ function certs() {
 }
 
 function getCerts() {
+	certs();
+
 	return {
 		key		: fs.readFileSync('certs/key.pem').toString(),
 		cert	: fs.readFileSync('certs/cert.pem').toString()
 	};
 }
 
-function httpBasic() {
-	var server = http.createServer(function (request, response) {
-	  response.writeHead(200, {"Content-Type": "text/plain"});
-	  response.end("vanila HTTP example\n");
+function getRequestResponse(req, res, serverType, cb) {
+    var uri = url.parse(req.url).pathname;
+	if (uri === "/") {
+		uri = "/index.html";
+	}
+
+	var contentTypes = {
+		"html"	: "text/html",
+		"jpeg"	: "image/jpeg",
+		"jpg"	: "image/jpeg",
+		"png"	: "image/png",
+		"js"	: "text/javascript",
+		"css"	: "text/css"
+	};
+
+	var code = 404;
+	var content = "File Not Found: " + serverType;
+	var contentType = "text/plain";
+
+	var filePath = __dirname + FILEDIR + uri;
+	var buffer = "";
+	fs.exists(filePath, function (exists) {
+		console.log(filePath);
+		console.log(exists);
+		if (exists) {
+			contentType = contentTypes[path.basename(filePath).split('.')[1]] || "text/plain";
+				
+			var fileStream = fs.createReadStream(filePath);
+			fileStream.on('data', function (data) {
+				buffer += data;
+			});
+
+			fileStream.on('end', function () {
+				var replaceStr = /{{simple-web-server-example:title}}/;
+				content = buffer.replace(replaceStr, "Running " + serverType + " <br/> Path: " + filePath );
+				code = 200;
+
+				endRes({
+					'contentType'	: contentType,
+					'code'			: code,
+					'content'		: content
+				}, res);	
+			});
+		} else {
+			endRes({
+				'contentType'	: contentType,
+				'code'			: code,
+				'content'		: content
+			}, res);	
+		}
 	});
-	server.listen(port);
+}
+
+function endRes (parsed, res) {
+	res.writeHead(parsed.code, { "Content-Type" : parsed.contentType });
+	res.end(parsed.content);
+}
+
+function httpBasic() {
+	var server = http.createServer(function (req, res) {
+		getRequestResponse(req, res, "http");
+	});
+
+	server.listen(PORT);
+	console.log("Server running at http://127.0.0.1:"+PORT+"/");
 }
 
 function httpsBasic() {
 	var sslServer = https.createServer(getCerts(), function (req, res) {
-		res.writeHead(200);
-		res.end("vanilla HTTPS example");
+		getRequestResponse(req, res, "https")
 	});
 
-	sslServer.listen(port);
+	sslServer.listen(PORT);
+	console.log("Server running at https://127.0.0.1:"+PORT+"/");
 }
 
-function https2tls() {
-	var tls = require('tls');
-	tls.createServer(getCerts(), function (s) {
-		s.write("welcome!\n");
-		s.pipe(s);
-	}).listen(port, '127.0.0.1');
-}
+function httpsExpress() {
 
-function httpExpress() {
-	var express = require('express');
 	var app = express();
-    https.createServer(getCerts(), app).listen(port);
+	app.use('/', function (req, res) {
+		getRequestResponse(req, res, "httpsExpress");
+	});
+
+	app.use(express.static(__dirname + FILEDIR));
+    https.createServer(getCerts(), app).listen(PORT);
+
+	console.log("Server running at https://127.0.0.1:"+PORT+"/");
 }
 
 function httpConnect() {
-	var connect = require('connect');
-	var http = require('http');
-	
-	var app = connect()
-	  .use(connect.favicon())
-	  .use(connect.logger('dev'))
-	  .use(connect.static('public'))
-	  .use(connect.directory('public'))
-	  .use(connect.cookieParser())
-	  .use(connect.session({ secret: 'my secret here' }))
-	  .use(function(req, res){
-	    res.end('Hello from Connect!\n');
-	  });
-	
-	http.createServer(app).listen(port);
+	var app = connect();
+	connectAddOptions(app, "http");
+
+	http.createServer(app).listen(PORT);
+	console.log("Server running at http://127.0.0.1:"+PORT+"/");
 }
 
 function httpsConnect() {
-	/* setup https server */
-	var connect = require('connect');
-	var app = connect()
-		.use(connect.logger('dev'))
-		.use(connect.static(__dirname + '/clients'))
-		.use(function(err, req, res) {
-			console.log("connect() serve");
-			console.log(err);
-	
-			//i'm not sure I need this func any more
-			res.writeHead(200, {'Content-Type' : 'text/html'});
-			res.end();
-		});
 
+	var app = connect();
+	connectAddOptions(app, "https");
 	var sslServer = https.createServer(getCerts(), app);
 
 	sslServer.on("error", function (e) {
-		console.log ("ERRR");
-		console.log('ssl server error');
-		console.log(e);
-		console.log(e.stack);
+		console.log ("ERROR " + e.stack);
 	});
 
-	sslServer.listen(port);
+	sslServer.listen(PORT);
+	console.log("Server running at https://127.0.0.1:"+PORT+"/");
 }
 
-exports
+function connectAddOptions(app, httpType) {
+	app.use("/", function(req, res) {
+		getRequestResponse(req, res, httpType + "Connect");
+	});
 
+	app.use(connect.static(__dirname + FILEDIR));
+
+/* OPTIONAL ADDONS */
+//	app.use(connect.favicon());
+//	app.use(connect.logger('dev'));
+	app.use(connect.directory(__dirname + FILEDIR));
+//	app.use(connect.cookieParser());
+
+}
